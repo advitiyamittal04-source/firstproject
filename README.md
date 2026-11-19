@@ -189,7 +189,7 @@ AFRAME.registerComponent("mover", {
     if (G.phase !== "play" && G.phase !== "out") return;
     let f = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) - AX[1], s = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + AX[0];
     const m = Math.hypot(f, s); if (m > 1) { f /= m; s /= m; } this.mv = m > .05;
-    const sp = (headY < 1.15 ? 1 : 2.2) * dt, yaw = rig.rotation.y + cam.object3D.rotation.y;
+    const sp = (headY < 1.15 ? 1 : k.ShiftLeft ? 3.4 : 2.2) * dt, yaw = rig.rotation.y + cam.object3D.rotation.y;
     const mx = (-Math.sin(yaw) * f + Math.cos(yaw) * s) * sp, mz = (-Math.cos(yaw) * f - Math.sin(yaw) * s) * sp;
     if (!hit(p.x + mx, p.z)) p.x += mx; if (!hit(p.x, p.z + mz)) p.z += mz;
     this.sd = (this.sd || 0) + Math.hypot(mx, mz); if (this.sd > .75) { this.sd = 0; if (audio) step(); }
@@ -213,7 +213,17 @@ function overlay(title, body, label, fn) {
   const b = box(ov, "0 -.5 .02", { w: 1.2, h: .2, text: label, bg: "#16a34a", size: 38 });
   b.classList.add("clickable"); b.addEventListener("click", fn); ovFn = fn;
 }
-addEventListener("keydown", e => { if (e.code === "Enter" && ovFn) ovFn(); });
+addEventListener("keydown", e => {
+  if (e.code === "Enter" && ovFn) ovFn();
+  if (e.code === "KeyE" && !scene.is("vr-mode")) {   /* Windows: E interacts with whatever the crosshair is on */
+    const rc = new THREE.Raycaster(); rc.setFromCamera({ x: 0, y: 0 }, scene.camera);
+    const h = rc.intersectObjects([...document.querySelectorAll(".clickable")].map(n => n.object3D), true).filter(i => i.distance < 4)[0];
+    let n = h && h.object; while (n && !n.el) n = n.parent; if (n) n.el.emit("click");
+  }
+});
+const intro = () => overlay("PREPARE VR: FIRE ESCAPE", scene.is("vr-mode")
+  ? "QUEST CONTROLS\nLeft stick: move   Right stick: turn\nB/Y or stick-click: crouch (or really crouch)\nPoint + trigger: interact   A: confirm"
+  : "WINDOWS CONTROLS\nW A S D: move   Mouse drag: look\nHold C or Ctrl: crouch   Shift: run\nE or click: interact   Enter: start", "Start", begin);
 /* Meta Quest (Touch Plus) controls, read straight from the XR gamepad: left stick = move, right stick = snap turn, B/Y or stick-click = crouch toggle, A/X = confirm */
 const _pb = {};
 function pollXR() {
@@ -254,6 +264,10 @@ function init() {
   
   
   overlay("PREPARE VR: FIRE ESCAPE", "A fire alarm is ringing. Escape the building alive.\nPC: WASD, mouse look, hold C to crouch, click objects.\nQuest: left stick move, right stick turn, B/Y or stick-click to crouch, trigger to interact, A to confirm.", "Start (Enter / A / trigger)", begin);
+  intro();
+  const ch = box(cam, "0 0 -1", { w: .1, h: .1, text: "+", size: 40 });   /* desktop crosshair */
+  scene.addEventListener("enter-vr", () => { ch.setAttribute("visible", false); if (G.phase === "menu") intro(); });
+  scene.addEventListener("exit-vr", () => { ch.setAttribute("visible", true); if (G.phase === "menu") intro(); });
   note.style.display = "none";
 }
 scene.hasLoaded ? init() : scene.addEventListener("loaded", init);
