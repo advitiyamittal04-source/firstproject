@@ -36,7 +36,7 @@ const S = {
       ["Hold your breath and sprint", 0, "You can’t hold it long enough, and you may get disoriented."]] },
     { q: "You reach a lift and a stairwell. Which one?", c: [
       ["Take the lift, it’s faster", 0, "Lifts can stall or open onto burning floors."],
-      ["Use the stairs", 1, "Correct. Stairwells are the safe, designed escape route."],
+      ["Use the stairs", 1, "Correct. Stairwells         are the safe, designed escape route."],
       ["Wait by the lift for help", 0, "Staying put wastes the time you have."]] },
     { q: "You’re outside. A colleague says a friend is still inside.", c: [
       ["Go back in to find them", 0, "Never re-enter. Tell firefighters exactly where they were."],
