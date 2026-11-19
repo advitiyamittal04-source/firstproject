@@ -15,7 +15,7 @@ html,body{margin:0;height:100%;background:#0b0d10}
 </head>
 <body>
 <div id="msg">Loading…</div>
-<a-scene background="color:#0d1016" fog="type:exponential;color:#0d1016;density:.012" renderer="antialias:true" cursor="rayOrigin:mouse" raycaster="objects:.clickable">
+<a-scene background="color:#0d1016" fog="type:exponential;color:#0d1016;density:.012" renderer="antialias:true;foveationLevel:1;highRefreshRate:true" cursor="rayOrigin:mouse" raycaster="objects:.clickable">
   <a-entity id="rig" position="0 0 0">
     <a-entity id="cam" camera look-controls="pointerLockEnabled:false" position="0 1.6 0"></a-entity>
     <a-entity id="lh" laser-controls="hand:left" raycaster="objects:.clickable"></a-entity>
@@ -146,7 +146,7 @@ function build() {
   for (let i = 0; i < 7; i++) el("a-plane", { position: `${-8 + i * 2.7} ${5 + Math.random() * 3.5} -33.4`, width: 3, height: 4, material: "shader:flat;transparent:true;blending:additive;depthWrite:false;side:double", ptex: "kind:flame", billboard: "", flick: "s:1.4" });
   el("a-light", { type: "point", color: "#ff6a00", intensity: 1.5, distance: 30, position: "0 4 -37" });                        /* burning building (outside) */
   el("a-box", { position: "0 2.05 -14", width: 3, height: 1.9, depth: 20, material: "color:#2b2b2b;opacity:.35;transparent:true;side:double;depthWrite:false" });
-  for (let i = 0; i < 40; i++) el("a-plane", { position: `${(Math.random() - .5) * 2.4} ${1.3 + Math.random() * 1.5} ${-4.5 - Math.random() * 19}`, width: 2.6, height: 2.6, material: "shader:flat;transparent:true;opacity:.3;depthWrite:false;side:double;color:#555", ptex: "kind:puff", puff: "" }); /* smoke layer: stay below 1.1 m */
+  const QUEST = /OculusBrowser|Quest/i.test(navigator.userAgent); for (let i = 0; i < (QUEST ? 18 : 40); i++) el("a-plane", { position: `${(Math.random() - .5) * 2.4} ${1.3 + Math.random() * 1.5} ${-4.5 - Math.random() * 19}`, width: 2.6, height: 2.6, material: "shader:flat;transparent:true;opacity:.3;depthWrite:false;side:double;color:#555", ptex: "kind:puff", puff: "" }); /* smoke layer: stay below 1.1 m */
   emer = el("a-light", { type: "point", color: "#ff2a2a", intensity: .5, distance: 14, position: "0 2.6 -12" });
   el("a-light", { type: "ambient", intensity: .55 }); el("a-light", { type: "directional", position: "2 4 2", intensity: .3 }); el("a-light", { type: "point", color: "#fff2d8", intensity: .5, distance: 9, position: "0 2.6 0" });
   for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) el("a-box", { position: `${x} 2.98 ${z}`, width: 1.2, height: .05, depth: .6, material: "shader:flat;color:#fff8e8" });
@@ -179,6 +179,7 @@ AFRAME.registerComponent("mover", {
   tick(t, dt) {
     dt = Math.min(dt, 50) / 1000; const k = this.k, rig = rigEl.object3D, p = rig.position;
     if (!scene.is("vr-mode")) cam.object3D.position.y = (k.KeyC || k.ControlLeft ? .8 : 1.6) + (this.mv ? Math.sin(t * .009) * .025 : 0);     /* desktop crouch */
+    if (scene.is("vr-mode")) { pollXR(); p.y = G.vcrouch ? -.7 : 0; }
     cam.object3D.getWorldPosition(this.v); const headY = this.v.y;
     const fg = scene.object3D.fog; if (fg) { const tgt = G.phase === "play" && p.z < -4.3 ? (headY > 1.15 ? .3 : .07) : .012; fg.density += (tgt - fg.density) * Math.min(1, dt * 2); }
     const vm = vig && vig.getObject3D("mesh"); if (vm) vm.material.opacity = Math.min(.9, (G.phase === "play" ? (1 - G.health / 100) * .7 : 0) + (Date.now() < G.hurtT ? .3 : 0));
@@ -213,12 +214,23 @@ function overlay(title, body, label, fn) {
   b.classList.add("clickable"); b.addEventListener("click", fn); ovFn = fn;
 }
 addEventListener("keydown", e => { if (e.code === "Enter" && ovFn) ovFn(); });
+/* Meta Quest (Touch Plus) controls, read straight from the XR gamepad: left stick = move, right stick = snap turn, B/Y or stick-click = crouch toggle, A/X = confirm */
+const _pb = {};
+function pollXR() {
+  const ses = scene.renderer && scene.renderer.xr && scene.renderer.xr.getSession(); AX[0] = AX[1] = 0; if (!ses) return;
+  ses.inputSources.forEach(s => {
+    const gp = s.gamepad; if (!gp) return; const a = gp.axes, h = s.handedness, dz = v => Math.abs(v) > .15 ? v : 0;
+    if (h === "left") { AX[0] = dz(a[2] || 0); AX[1] = dz(a[3] || 0); }
+    if (h === "right" && Math.abs(a[2] || 0) > .7 && Date.now() > turnCool) { rigEl.object3D.rotation.y -= Math.sign(a[2]) * Math.PI / 6; turnCool = Date.now() + 350; }
+    [3, 4, 5].forEach(i => { const k = h + i, on = gp.buttons[i] && gp.buttons[i].pressed; if (on && !_pb[k]) { if (i === 4) { if (ovFn) ovFn(); } else G.vcrouch = !G.vcrouch; } _pb[k] = on; });
+  });
+}
 const objective = () => G.phase === "out" ? "Reach the green ASSEMBLY POINT" : rigEl.object3D.position.z > -4 ? "Leave the room. Don’t stop for belongings!" : "Stay low, avoid fire, take the STAIRS";
 setInterval(() => { if (hud) hud.setAttribute("ui-box", "text", G.phase === "menu" || G.phase === "done" ? "" : `❤ ${Math.max(0, Math.round(G.health))}%    ⏱ ${Math.floor((Date.now() - G.t0) / 1000)}s\n${objective()}\n${Date.now() < G.until ? G.msg : ""}`); }, 250);
 
 function begin() {
   try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
-  Object.assign(G, { phase: "play", health: 100, bonus: 0, ext: false, t0: Date.now(), msg: "", until: 0 });
+  Object.assign(G, { phase: "play", health: 100, bonus: 0, ext: false, t0: Date.now(), msg: "", until: 0, vcrouch: false });
   rigEl.object3D.position.set(0, 0, 0); rigEl.object3D.rotation.set(0, 0, 0);
   fires.forEach(F => { F.on = true; F.g.setAttribute("visible", true); });
   laptop.setAttribute("visible", true); extEl.setAttribute("visible", true);
@@ -229,7 +241,7 @@ function end(win, why) {
   const score = win ? Math.max(0, Math.min(100, Math.round(40 + G.health * .4 + G.bonus + Math.max(0, 60 - t) * .3))) : 0;
   overlay(win ? "YOU ESCAPED" : "YOU DIDN’T MAKE IT",
     (win ? `Score ${score}/100   Health ${Math.round(G.health)}%   Time ${t}s\n` : `${why}\n`) +
-    "Remember: leave at once, stay low under smoke, never use lifts, use stairs, go to the assembly point, never re-enter.", "Play again (Enter)", begin);
+    "Remember: leave at once, stay low under smoke, never use lifts, use stairs, go to the assembly point, never re-enter.", "Play again (Enter / A / trigger)", begin);
 }
 
 /* ---- Init ---- */
@@ -239,9 +251,9 @@ function init() {
   vig = el("a-plane", { position: "0 0 -.35", width: 1.6, height: 1.6, material: "shader:flat;transparent:true;opacity:0;depthWrite:false;depthTest:false;color:#fff", ptex: "kind:vig" }, cam);
   setInterval(() => { const L = emer && emer.getObject3D("light"); if (L) L.intensity = Math.random() < .25 ? .1 : .6; }, 180);
   ov = el("a-entity", { position: "0 0 -1.7" }, cam);
-  document.getElementById("lh").addEventListener("thumbstickmoved", e => { AX[0] = Math.abs(e.detail.x) > .15 ? e.detail.x : 0; AX[1] = Math.abs(e.detail.y) > .15 ? e.detail.y : 0; });
-  document.getElementById("rh").addEventListener("thumbstickmoved", e => { if (Math.abs(e.detail.x) > .7 && Date.now() > turnCool) { rigEl.object3D.rotation.y -= Math.sign(e.detail.x) * Math.PI / 6; turnCool = Date.now() + 350; } });
-  overlay("PREPARE VR: FIRE ESCAPE", "A fire alarm is ringing. Escape the building alive.\nPC: WASD move, drag mouse to look, hold C to crouch, click objects.\nVR: left stick move, right stick turn, physically crouch.", "Start (Enter)", begin);
+  
+  
+  overlay("PREPARE VR: FIRE ESCAPE", "A fire alarm is ringing. Escape the building alive.\nPC: WASD, mouse look, hold C to crouch, click objects.\nQuest: left stick move, right stick turn, B/Y or stick-click to crouch, trigger to interact, A to confirm.", "Start (Enter / A / trigger)", begin);
   note.style.display = "none";
 }
 scene.hasLoaded ? init() : scene.addEventListener("loaded", init);
